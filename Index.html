@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <link rel="stylesheet" href="css/leaflet.css">
+        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+        <link rel="stylesheet" href="css/L.Control.Locate.min.css">
+        <link rel="stylesheet" href="css/web.css">
+        <link rel="stylesheet" href="css/fontawesome-all.min.css">
+        <link rel="stylesheet" href="css/leaflet-measure.css">
+        <link rel="stylesheet" href="css/opacity.css">
+        <link rel="stylesheet" href="css/Popup.css">
+        <style>
+        html, body, #map {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+        </style>
+        <title>Naval Farms- Interactive Map</title>
+    </head>
+    <body>
+        <!-- Popup Splash Screen -->
+        <div id="popupOverlay" class="popup-overlay">
+            <div class="popup-content">
+                <button class="close-btn" onclick="closePopup()">&times;</button>
+                
+                <!-- Banner Content -->
+                <div style="background: linear-gradient(135deg, #2d8659 0%, #ff6b35 100%); padding: 30px; border-radius: 10px; color: white; text-align: center;">
+                    <h1 style="margin: 0; font-size: 2.5rem; font-weight: bold;">PAKISTAN</h1>
+                    <h2 style="margin: 5px 0; font-size: 2rem; font-weight: bold;">NAVAL FARMS</h2>
+                    
+                    <div style="border-top: 2px solid white; padding-top: 15px; margin-top: 15px;">
+                        <p style="margin: 5px 0; font-size: 1.1rem; font-weight: bold;">RESIDENTIAL PLOTS</p>
+                        <p style="margin: 5px 0; font-size: 1.1rem;">COMMERCIAL PLOTS</p>
+                    </div>
+                    
+                    <div style="background: #ff6b35; margin: 20px -30px -10px -30px; padding: 15px; border-radius: 0 0 10px 10px;">
+                        <p style="margin: 0; font-size: 1.1rem; font-weight: bold; letter-spacing: 2px;">
+                            SALE / PURCHASE / EVALUATE /<br>DEVELOPMENT STATUS
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="contact-info">
+                    <strong>GRAVITY SOLUTIONS</strong><br>
+                    <span style="font-size: 16px; font-weight: bold;">📞 +92-333-6577555 | +92-314-5112979</span><br>
+                    <a href="http://www.gravitysolutionspk.com" target="_blank">🌐 www.gravitysolutionspk.com</a>
+                </div>
+                
+                <div class="popup-text">
+                    <p><strong>Welcome to Gravity Solutions E-Maps</strong></p>
+                    <p>Explore the accurate locations of Residential &</p>
+                    <p>Commercial plots in Pakistan Naval Farms</p>
+                </div>
+            </div>
+        </div>
+        <div id="map">
+        </div>
+        <script src="js/web_expressions.js"></script>
+        <script src="js/leaflet.js"></script>
+        <script src="js/L.Control.Layers.Tree.min.js"></script>
+        <script src="js/L.Control.Locate.min.js"></script>
+        <script src="js/leaflet.rotatedMarker.js"></script>
+        <script src="js/leaflet.pattern.js"></script>
+        <script src="js/leaflet-hash.js"></script>
+        <script src="js/Autolinker.min.js"></script>
+        <script src="js/rbush.min.js"></script>
+        <script src="js/labelgun.min.js"></script>
+        <script src="js/labels.js"></script>
+        <script src="js/leaflet-measure.js"></script>
+        <script src="js/Popupcall.js"></script>
+        <script src="js/Opacityslider.js"></script>
+        <script>
+        var map = L.map('map', {
+            zoomControl:false, maxZoom:28, minZoom:1
+        }).fitBounds([[33.709473024559095,73.22749783599025],[33.751238801678205,73.30575451535974]]);
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="http:www.gravitysolutionspk.com" target="_blank">BY GRAVITY SOLUTIONS</a>');
+        var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+        // remove popup's row if "visible-with-data"
+        function removeEmptyRowsFromPopupContent(content, feature) {
+         var tempDiv = document.createElement('div');
+         tempDiv.innerHTML = content;
+         var rows = tempDiv.querySelectorAll('tr');
+         for (var i = 0; i < rows.length; i++) {
+             var td = rows[i].querySelector('td.visible-with-data');
+             var key = td ? td.id : '';
+             if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                 rows[i].parentNode.removeChild(rows[i]);
+             }
+         }
+         return tempDiv.innerHTML;
+        }
+        // add class to format popup if it contains media
+		function addClassToPopupIfMedia(content, popup) {
+			var tempDiv = document.createElement('div');
+			tempDiv.innerHTML = content;
+			if (tempDiv.querySelector('td img')) {
+				popup._contentNode.classList.add('media');
+					// Delay to force the redraw
+					setTimeout(function() {
+						popup.update();
+					}, 10);
+			} else {
+				popup._contentNode.classList.remove('media');
+			}
+		}
+        var title = new L.Control({'position':'topright'});
+        title.onAdd = function (map) {
+            this._div = L.DomUtil.create('div', 'info');
+            this.update();
+            return this._div;
+        };
+        title.update = function () {
+            this._div.innerHTML = '<h2>Naval Farms</h2>';
+        };
+        title.addTo(map);
+        var zoomControl = L.control.zoom({
+            position: 'topleft'
+        }).addTo(map);
+        L.control.locate({locateOptions: {maxZoom: 19}}).addTo(map);
+        var measureControl = new L.Control.Measure({
+            position: 'topleft',
+            primaryLengthUnit: 'meters',
+            secondaryLengthUnit: 'kilometers',
+            primaryAreaUnit: 'sqmeters',
+            secondaryAreaUnit: 'hectares'
+        });
+        measureControl.addTo(map);
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].innerHTML = '';
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].className += ' fas fa-ruler';
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+        }
+        map.createPane('pane_GoogleHybrid_1');
+        map.getPane('pane_GoogleHybrid_1').style.zIndex = 401;
+        var layer_GoogleHybrid_1 = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            pane: 'pane_GoogleHybrid_1',
+            opacity: 1.0,
+            attribution: '',
+            minZoom: 1,
+            maxZoom: 28,
+            minNativeZoom: 0,
+            maxNativeZoom: 30
+        });
+        layer_GoogleHybrid_1;
+        map.addLayer(layer_GoogleHybrid_1);
+        map.createPane('pane_NavalFarms_2');
+        map.getPane('pane_NavalFarms_2').style.zIndex = 402;
+        var layer_NavalFarms_2 = L.tileLayer('https://api.mapbox.com/v4/gravitysols.1dey1h/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoiZ3Jhdml0eXNvbHMiLCJhIjoiY21rNTl3MzJiMGF1cTNmczk5ZTA1MHptdyJ9.-KSWXjdAmPFEGwEKP_A4Ig', {
+            pane: 'pane_NavalFarms_2',
+            pane: 'pane_NavalFarms_2',
+            opacity: 1.0,
+            attribution: '',
+            minZoom: 1,
+            maxZoom: 28,
+            minNativeZoom: 0,
+            maxNativeZoom: 28
+        });
+        layer_NavalFarms_2;
+        map.addLayer(layer_NavalFarms_2);
+        var overlaysTree = [
+            {label: "Naval Farms", layer: layer_NavalFarms_2},
+            {label: "Google Hybrid", layer: layer_GoogleHybrid_1},]
+        var lay = L.control.layers.tree(null, overlaysTree,{
+            //namedToggle: true,
+            //selectorBack: false,
+            //closedSymbol: '&#8862; &#x1f5c0;',
+            //openedSymbol: '&#8863; &#x1f5c1;',
+            //collapseAll: 'Collapse all',
+            //expandAll: 'Expand all',
+            collapsed: true,
+        });
+        lay.addTo(map);
+        // ADD LOCATION / SHARE LOCATION FUNCTION
+// =====================================================
+
+var locationMode = false;
+var sharedLocationMarker = null;
+
+
+// -----------------------------------------------------
+// Create Add Location Leaflet Control
+// -----------------------------------------------------
+
+var AddLocationControl = L.Control.extend({
+
+    options: {
+        position: 'topleft'
+    },
+
+    onAdd: function(map) {
+
+        var container = L.DomUtil.create(
+            'div',
+            'add-location-control leaflet-bar'
+        );
+
+        var button = L.DomUtil.create(
+            'button',
+            'add-location-button',
+            container
+        );
+
+        button.id = 'addLocationButton';
+
+        button.innerHTML =
+            '<i class="fas fa-map-marker-alt"></i> Add Location';
+
+        button.title = 'Click here and then select a location on the map';
+
+        // Prevent map click/drag when clicking button
+        L.DomEvent.disableClickPropagation(container);
+
+        L.DomEvent.on(button, 'click', function(e) {
+
+            L.DomEvent.stopPropagation(e);
+
+            locationMode = !locationMode;
+
+            if (locationMode) {
+
+                button.classList.add('active');
+
+                button.innerHTML =
+                    '<i class="fas fa-crosshairs"></i> Click Map';
+
+                map.getContainer().style.cursor = 'crosshair';
+
+            } else {
+
+                button.classList.remove('active');
+
+                button.innerHTML =
+                    '<i class="fas fa-map-marker-alt"></i> Add Location';
+
+                map.getContainer().style.cursor = '';
+
+            }
+
+        });
+
+        return container;
+    }
+});
+
+map.addControl(new AddLocationControl());
+
+
+// -----------------------------------------------------
+// When user clicks the map
+// -----------------------------------------------------
+
+map.on('click', function(e) {
+
+    // Only work when Add Location mode is active
+    if (!locationMode) {
+        return;
+    }
+
+    var lat = e.latlng.lat;
+    var lng = e.latlng.lng;
+
+    // Current zoom
+    var zoom = map.getZoom();
+
+    // Remove previous marker if one exists
+    if (sharedLocationMarker) {
+        map.removeLayer(sharedLocationMarker);
+    }
+
+    // Create marker
+    sharedLocationMarker = L.marker(
+        [lat, lng],
+        {
+            draggable: false
+        }
+    ).addTo(map);
+
+
+    // -------------------------------------------------
+    // Create share URL
+    // -------------------------------------------------
+
+    var shareURL =
+        window.location.origin +
+        window.location.pathname +
+        '?location=' +
+        lat.toFixed(7) +
+        ',' +
+        lng.toFixed(7) +
+        '&zoom=' +
+        zoom;
+
+
+    // -------------------------------------------------
+    // Popup content
+    // -------------------------------------------------
+
+    var popupContent = `
+
+        <div class="location-share-popup">
+
+            <strong>
+                <i class="fas fa-map-marker-alt"></i>
+                Selected Location
+            </strong>
+
+            <div class="location-coordinates">
+                Latitude: ${lat.toFixed(6)}<br>
+                Longitude: ${lng.toFixed(6)}
+            </div>
+
+             <div class="share-buttons">
+
+            <!-- Copy Link -->
+            <button class="copy-link-btn"
+                onclick="copyLocationLink('${shareURL}')">
+                <i class="fas fa-link"></i>
+                Copy Link
+            </button>
+
+            <!-- WhatsApp -->
+            <button class="whatsapp-share-btn"
+                onclick="shareLocationWhatsApp('${shareURL}')">
+                <i class="fab fa-whatsapp"></i>
+                WhatsApp
+            </button>
+
+        </div>
+
+    `;
+
+
+
+    sharedLocationMarker
+        .bindPopup(popupContent)
+        .openPopup();
+
+
+    // -------------------------------------------------
+    // Exit location mode
+    // -------------------------------------------------
+
+    locationMode = false;
+
+    var button =
+        document.getElementById('addLocationButton');
+
+    if (button) {
+
+        button.classList.remove('active');
+
+        button.innerHTML =
+            '<i class="fas fa-map-marker-alt"></i> Add Location';
+    }
+
+    map.getContainer().style.cursor = '';
+
+});
+
+
+// =====================================================
+// Copy Location Link
+// =====================================================
+
+function copyLocationLink(url) {
+
+    navigator.clipboard.writeText(url)
+        .then(function() {
+
+            alert('Location link copied successfully!');
+
+        })
+        .catch(function() {
+
+            // Fallback for older browsers
+            var tempInput =
+                document.createElement('input');
+
+            tempInput.value = url;
+
+            document.body.appendChild(tempInput);
+
+            tempInput.select();
+
+            document.execCommand('copy');
+
+            document.body.removeChild(tempInput);
+
+            alert('Location link copied successfully!');
+
+        });
+
+}
+
+
+// =====================================================
+// CHECK FOR SHARED LOCATION WHEN PAGE LOADS
+// =====================================================
+
+function loadSharedLocation() {
+
+    var params =
+        new URLSearchParams(window.location.search);
+
+    var location =
+        params.get('location');
+
+    var zoom =
+        parseInt(params.get('zoom'));
+
+
+    // No shared location
+    if (!location) {
+        return;
+    }
+
+
+    // Split latitude / longitude
+    var coordinates =
+        location.split(',');
+
+
+    if (coordinates.length !== 2) {
+        return;
+    }
+
+
+    var lat =
+        parseFloat(coordinates[0]);
+
+    var lng =
+        parseFloat(coordinates[1]);
+
+
+    if (isNaN(lat) || isNaN(lng)) {
+        return;
+    }
+
+
+    // Default zoom
+    if (isNaN(zoom)) {
+        zoom = 18;
+    }
+
+
+    // Move map to shared location
+    map.setView(
+        [lat, lng],
+        zoom
+    );
+
+
+    // Remove existing marker
+    if (sharedLocationMarker) {
+        map.removeLayer(sharedLocationMarker);
+    }
+
+
+    // Create shared marker
+    sharedLocationMarker =
+        L.marker([lat, lng])
+        .addTo(map);
+
+
+    // Popup
+    sharedLocationMarker
+        .bindPopup(`
+
+            <div class="location-share-popup">
+
+                <strong>
+                    <i class="fas fa-map-marker-alt"></i>
+                    Shared Location
+                </strong>
+
+                <div class="You marked a location">
+                    Latitude: ${lat.toFixed(6)}<br>
+                    Longitude: ${lng.toFixed(6)}
+                </div>
+
+            </div>
+
+        `)
+        .openPopup();
+
+}
+function shareLocationWhatsApp(url) {
+
+    var message =
+        "📍 Map Location\n\n" +
+        "Open this location:\n" +
+        url;
+
+    var whatsappURL =
+        "https://wa.me/?text=" +
+        encodeURIComponent(message);
+
+    window.open(
+        whatsappURL,
+        "_blank"
+    );
+}
+
+
+// Load shared location after map initialization
+setTimeout(function() {
+
+    loadSharedLocation();
+
+}, 1000);
+        var title = new L.Control({'position':'bottomright'});
+        title.onAdd = function (map) {
+            this._div = L.DomUtil.create('div', 'info');
+            this.update();
+            return this._div;
+        };
+        
+            var customOpacity = new customOpacityControl();
+            map.addControl(customOpacity);
+        
+        setBounds();
+        </script>
+        </style>
+
+
+<!-- LOGO -->
+<a href="https://www.dhai-r.com.pk/" target="_blank" title="Visit DHA Officials">
+<img src="images/logo.png" alt="Logo" class="corner-logo">
+
+<style>
+.corner-logo{
+  position: fixed;
+  left: 15px;
+  bottom: 25px;
+  width: 45px;   /* small size */
+  height: auto;
+  z-index: 9999;
+}
+</style>
+
+<!-- WhatsApp Floating Button with Custom Icon -->
+<a href="https://wa.me/923336577555" target="_blank" id="whatsapp-button">
+    <img src="images/whatsapp.png" alt="WhatsApp" />
+    <span class="tooltip-text">Need Help? Chat with us!</span>
+</a>
+
+<style>
+#whatsapp-button {
+    position: fixed;
+    bottom: 20px;
+    right: 10px;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0px 3px 8px rgba(0,0,0,0.3);
+    text-decoration: none;
+    z-index: 1000;
+}
+
+#whatsapp-button img {
+    width: 60px;
+    height: 60px;
+    border-radius: 0%;
+    transition: transform 0.2s;
+}
+
+#whatsapp-button:hover img {
+    transform: scale(1.1);
+}
+
+/* Tooltip styling */
+#whatsapp-button .tooltip-text {
+    visibility: hidden;
+    width: max-content;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    font-size: 14px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    position: absolute;
+    bottom: 70px;
+    right: 0;
+    opacity: 0;
+    transition: opacity 0.3s;
+    white-space: nowrap;
+}
+
+#whatsapp-button:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
+</style>
+        </script>
+        </script>
+    </body>
+</html>
